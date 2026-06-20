@@ -294,25 +294,23 @@
 #define CTRL_MOD_REQ      TRQ_MODE
 
   #define CONTROL_ADC           0         // use ADC as input. Number indicates priority for dual-input. Disable CONTROL_SERIAL_USART2, FEEDBACK_SERIAL_USART2, DEBUG_SERIAL_USART2!
-  #define SIDEBOARD_SERIAL_USART3 1       // right sideboard serial input used for the brake pedal channel
-  #define FEEDBACK_SERIAL_USART3          // right sideboard feedback for leds/battery data
+  #define SUPPORT_BUTTONS_RIGHT           // PB10 button1 to GND requests reverse. PB11 stays available as a second input if needed.
 
-  #define WHEELCHAIR_BRAKE_INPUT_ENABLE
+  #define WHEELCHAIR_PROFILE_ENABLE
+  #define WHEELCHAIR_REVERSE_SWITCH_ENABLE
   #define WHEELCHAIR_ACCEL_HALF_CMD 120   // About walking speed (~5 kph on 10 inch wheels) at half throttle travel
   #define WHEELCHAIR_TURN_SPOT_CMD  140   // Limit turn-in-place speed when throttle is released
-  #define WHEELCHAIR_BRAKE_DEADBAND 25    // Ignore small brake pedal noise after calibration
-  #define WHEELCHAIR_BRAKE_LOCK_THR 950   // Full brake threshold to hold position at standstill
+  #define WHEELCHAIR_HOLD_SPEED_RPM 8     // Hill hold engages only near standstill
+  #define WHEELCHAIR_HOLD_STEER_DB  60    // Steering above this value temporarily releases wheel hold
+  #define WHEELCHAIR_REVERSE_STOP_RPM 25  // Reverse is only allowed after speed drops below this threshold
 
   #define FLASH_WRITE_KEY       0x1001    // Flash memory writing key. Change this key to ignore the input calibrations from the flash memory and use the ones in config.h
   #define PRI_INPUT1            2, 0, 2048, 4095, 40  // Steering pot: center resting
   #define PRI_INPUT2            1, 0, 0, 4095, 0      // Accelerator pot: forward only
-  #define AUX_INPUT1            3, 0, 0, 4095, 0      // Brake pedal from right sideboard cmd1, auto-calibrated
-  #define AUX_INPUT2            0, 0, 0, 0, 0         // Unused auxiliary input slot kept for EEPROM layout
 
   // #define TANK_STEERING                   // use for tank steering, each input controls each wheel 
   // #define ADC_ALTERNATE_CONNECT           // use to swap ADC inputs
   // #define SUPPORT_BUTTONS_LEFT            // use left sensor board cable for button inputs.  Disable DEBUG_SERIAL_USART2!
-  // #define SUPPORT_BUTTONS_RIGHT           // use right sensor board cable for button inputs. Disable DEBUG_SERIAL_USART3!
 #endif
 // ############################# END OF VARIANT_ADC SETTINGS #########################
 

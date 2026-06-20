@@ -195,11 +195,7 @@ static uint8_t button2;                 // Green
 static uint8_t brakePressed;
 #endif
 
-#ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
-static uint8_t wheelchairBrakeHoldAcv = 0;
-#endif
-
-#if defined(CRUISE_CONTROL_SUPPORT) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE)) || defined(WHEELCHAIR_BRAKE_INPUT_ENABLE)
+#if defined(CRUISE_CONTROL_SUPPORT) || defined(WHEELCHAIR_PROFILE_ENABLE) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE))
 static uint8_t cruiseCtrlAcv = 0;
 static uint8_t standstillAcv = 0;
 #endif
@@ -780,22 +776,15 @@ void electricBrake(uint16_t speedBlend, uint8_t reverseDir) {
 }
 
 void applyWheelchairInputProfile(uint16_t speedBlend) {
-  #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+  #ifdef WHEELCHAIR_PROFILE_ENABLE
     int16_t throttleCmd = input2[0].cmd;
     int16_t steerCmd    = input1[0].cmd;
-    int16_t brakeCmd    = 0;
-    int16_t combinedCmd;
+    int16_t targetCmd;
+    uint8_t holdAllowed;
+    uint8_t reverseReq = 0;
 
-    #if defined(SIDEBOARD_SERIAL_USART3)
-      input1[1].raw = Sideboard_R.cmd1;
-      calcInputCmd(&input1[1], 0, INPUT_MAX);
-      brakeCmd = MAX(input1[1].cmd, 0);
-      if (timeoutFlgSerial_R || brakeCmd < WHEELCHAIR_BRAKE_DEADBAND) {
-        brakeCmd = 0;
-      }
-      input1[1].cmd = brakeCmd;
-      input2[1].raw = 0;
-      input2[1].cmd = 0;
+    #if defined(WHEELCHAIR_REVERSE_SWITCH_ENABLE) && (defined(SUPPORT_BUTTONS) || defined(SUPPORT_BUTTONS_LEFT) || defined(SUPPORT_BUTTONS_RIGHT))
+      reverseReq = button1;
     #endif
 
     if (throttleCmd > 0) {
@@ -807,40 +796,41 @@ void applyWheelchairInputProfile(uint16_t speedBlend) {
       }
     }
 
-    combinedCmd = throttleCmd - brakeCmd;
-    if (combinedCmd < 0) {
-      int16_t brakeTorque = (int16_t)(((int32_t)(-combinedCmd) * speedBlend) >> 15);
+    targetCmd = reverseReq ? -throttleCmd : throttleCmd;
+
+    if (((targetCmd < 0) && (speedAvg > WHEELCHAIR_REVERSE_STOP_RPM)) ||
+        ((targetCmd > 0) && (speedAvg < -WHEELCHAIR_REVERSE_STOP_RPM))) {
+      int16_t brakeTorque = (int16_t)(((int32_t)ABS(targetCmd) * speedBlend) >> 15);
       if (speedAvg > 0) {
-        combinedCmd = -brakeTorque;
-      } else if (speedAvg < 0) {
-        combinedCmd = brakeTorque;
+        targetCmd = -brakeTorque;
       } else {
-        combinedCmd = 0;
+        targetCmd = brakeTorque;
       }
+    } else if (speedAvgAbs < WHEELCHAIR_REVERSE_STOP_RPM && reverseReq) {
+      targetCmd = -throttleCmd;
     }
 
-    if (brakeCmd >= WHEELCHAIR_BRAKE_LOCK_THR && speedAvgAbs < 5) {
-      rtP_Left.n_cruiseMotTgt   = 0;
-      rtP_Right.n_cruiseMotTgt  = 0;
-      rtP_Left.b_cruiseCtrlEna  = 1;
-      rtP_Right.b_cruiseCtrlEna = 1;
-      wheelchairBrakeHoldAcv    = 1;
-      standstillAcv             = 1;
-      combinedCmd               = 0;
-      steerCmd                  = 0;
-    } else if (wheelchairBrakeHoldAcv && brakeCmd < WHEELCHAIR_BRAKE_LOCK_THR) {
-      rtP_Left.b_cruiseCtrlEna  = 0;
-      rtP_Right.b_cruiseCtrlEna = 0;
-      wheelchairBrakeHoldAcv    = 0;
-      standstillAcv             = 0;
-    }
-
-    if (!brakeCmd && !combinedCmd) {
+    if (!targetCmd) {
       steerCmd = CLAMP(steerCmd, -WHEELCHAIR_TURN_SPOT_CMD, WHEELCHAIR_TURN_SPOT_CMD);
     }
 
+    holdAllowed = (ABS(steerCmd) < WHEELCHAIR_HOLD_STEER_DB) && (targetCmd == 0);
+    if (holdAllowed && speedAvgAbs <= WHEELCHAIR_HOLD_SPEED_RPM) {
+      if (!standstillAcv) {
+        rtP_Left.n_cruiseMotTgt   = 0;
+        rtP_Right.n_cruiseMotTgt  = 0;
+        rtP_Left.b_cruiseCtrlEna  = 1;
+        rtP_Right.b_cruiseCtrlEna = 1;
+        standstillAcv             = 1;
+      }
+    } else if (standstillAcv) {
+      rtP_Left.b_cruiseCtrlEna  = 0;
+      rtP_Right.b_cruiseCtrlEna = 0;
+      standstillAcv             = 0;
+    }
+
     input1[0].cmd = steerCmd;
-    input2[0].cmd = combinedCmd;
+    input2[0].cmd = targetCmd;
   #else
     (void)speedBlend;
   #endif
