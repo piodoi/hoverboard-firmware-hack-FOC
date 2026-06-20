@@ -195,7 +195,11 @@ static uint8_t button2;                 // Green
 static uint8_t brakePressed;
 #endif
 
-#if defined(CRUISE_CONTROL_SUPPORT) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE))
+#ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+static uint8_t wheelchairBrakeHoldAcv = 0;
+#endif
+
+#if defined(CRUISE_CONTROL_SUPPORT) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE)) || defined(WHEELCHAIR_BRAKE_INPUT_ENABLE)
 static uint8_t cruiseCtrlAcv = 0;
 static uint8_t standstillAcv = 0;
 #endif
@@ -522,6 +526,12 @@ void adcCalibLim(void) {
   int16_t  INPUT2_MAX_temp = MIN_int16_T;
   int16_t  input_margin    = 0;
   uint16_t input_cal_timeout = 0;
+  #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+  int32_t  brake_fixdt = 0;
+  int16_t  BRAKE_MIN_temp = MAX_int16_T;
+  int16_t  BRAKE_MID_temp = 0;
+  int16_t  BRAKE_MAX_temp = MIN_int16_T;
+  #endif
   
   #ifdef CONTROL_ADC
   if (inIdx == CONTROL_ADC) {
@@ -529,11 +539,18 @@ void adcCalibLim(void) {
   }
   #endif
 
+  #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+  brake_fixdt = Sideboard_R.cmd1 << 16;
+  #endif
+
   // Extract MIN, MAX and MID from ADC while the power button is not pressed
   while (!HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN) && input_cal_timeout++ < 4000) {   // 20 sec timeout
     readInputRaw();
     filtLowPass32(input1[inIdx].raw, FILTER, &input1_fixdt);
     filtLowPass32(input2[inIdx].raw, FILTER, &input2_fixdt);
+    #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+    filtLowPass32(Sideboard_R.cmd1, FILTER, &brake_fixdt);
+    #endif
     
     INPUT1_MID_temp = (int16_t)(input1_fixdt >> 16);// CLAMP(input1_fixdt >> 16, INPUT1_MIN, INPUT1_MAX);   // convert fixed-point to integer
     INPUT2_MID_temp = (int16_t)(input2_fixdt >> 16);// CLAMP(input2_fixdt >> 16, INPUT2_MIN, INPUT2_MAX);
@@ -541,6 +558,11 @@ void adcCalibLim(void) {
     INPUT1_MAX_temp = MAX(INPUT1_MAX_temp, INPUT1_MID_temp);
     INPUT2_MIN_temp = MIN(INPUT2_MIN_temp, INPUT2_MID_temp);
     INPUT2_MAX_temp = MAX(INPUT2_MAX_temp, INPUT2_MID_temp);
+    #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+    BRAKE_MID_temp = (int16_t)(brake_fixdt >> 16);
+    BRAKE_MIN_temp = MIN(BRAKE_MIN_temp, BRAKE_MID_temp);
+    BRAKE_MAX_temp = MAX(BRAKE_MAX_temp, BRAKE_MID_temp);
+    #endif
     HAL_Delay(5);
   }
 
@@ -574,6 +596,23 @@ void adcCalibLim(void) {
     #endif
   }
 
+  #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+  #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
+  printf("Brake input is ");
+  #endif
+  uint8_t brakeTypTemp = checkInputType(BRAKE_MIN_temp, BRAKE_MID_temp, BRAKE_MAX_temp);
+  if (brakeTypTemp == input1[1].typDef || input1[1].typDef == 3) {
+    #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
+    printf("..OK\r\n");
+    #endif
+  } else {
+    brakeTypTemp = 0;
+    #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
+    printf("..NOK\r\n");
+    #endif
+  }
+  #endif
+
 
   // At least one of the inputs is not ignored
   if (input1TypTemp != 0 || input2TypTemp != 0){
@@ -587,11 +626,24 @@ void adcCalibLim(void) {
     input2[inIdx].mid = INPUT2_MID_temp;
     input2[inIdx].max = INPUT2_MAX_temp - input_margin;
 
+    #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+    if (brakeTypTemp != 0) {
+      input1[1].typ = brakeTypTemp;
+      input1[1].min = BRAKE_MIN_temp;
+      input1[1].mid = BRAKE_MID_temp;
+      input1[1].max = BRAKE_MAX_temp;
+    }
+    #endif
+
     inp_cal_valid = 1;    // Mark calibration to be saved in Flash at shutdown
     #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
     printf("Limits Input1: TYP:%i MIN:%i MID:%i MAX:%i\r\nLimits Input2: TYP:%i MIN:%i MID:%i MAX:%i\r\n",
             input1[inIdx].typ, input1[inIdx].min, input1[inIdx].mid, input1[inIdx].max,
             input2[inIdx].typ, input2[inIdx].min, input2[inIdx].mid, input2[inIdx].max);
+    #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+    printf("Brake Input: TYP:%i MIN:%i MID:%i MAX:%i\r\n",
+            input1[1].typ, input1[1].min, input1[1].mid, input1[1].max);
+    #endif
     #endif
   }else{
     #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
@@ -724,6 +776,73 @@ void electricBrake(uint16_t speedBlend, uint8_t reverseDir) {
     } else {  // when (input2.cmd < -ELECTRIC_BRAKE_THRES)
       input2[inIdx].cmd = MIN(brakeVal, ((input2[inIdx].cmd + ELECTRIC_BRAKE_THRES) * INPUT_MIN) / (INPUT_MIN + ELECTRIC_BRAKE_THRES));
     }
+  #endif
+}
+
+void applyWheelchairInputProfile(uint16_t speedBlend) {
+  #ifdef WHEELCHAIR_BRAKE_INPUT_ENABLE
+    int16_t throttleCmd = input2[0].cmd;
+    int16_t steerCmd    = input1[0].cmd;
+    int16_t brakeCmd    = 0;
+    int16_t combinedCmd;
+
+    #if defined(SIDEBOARD_SERIAL_USART3)
+      input1[1].raw = Sideboard_R.cmd1;
+      calcInputCmd(&input1[1], 0, INPUT_MAX);
+      brakeCmd = MAX(input1[1].cmd, 0);
+      if (timeoutFlgSerial_R || brakeCmd < WHEELCHAIR_BRAKE_DEADBAND) {
+        brakeCmd = 0;
+      }
+      input1[1].cmd = brakeCmd;
+      input2[1].raw = 0;
+      input2[1].cmd = 0;
+    #endif
+
+    if (throttleCmd > 0) {
+      if (throttleCmd <= (INPUT_MAX / 2)) {
+        throttleCmd = (int16_t)(((int32_t)throttleCmd * WHEELCHAIR_ACCEL_HALF_CMD) / (INPUT_MAX / 2));
+      } else {
+        throttleCmd = (int16_t)(WHEELCHAIR_ACCEL_HALF_CMD +
+                      (((int32_t)(throttleCmd - (INPUT_MAX / 2)) * (INPUT_MAX - WHEELCHAIR_ACCEL_HALF_CMD)) / (INPUT_MAX / 2)));
+      }
+    }
+
+    combinedCmd = throttleCmd - brakeCmd;
+    if (combinedCmd < 0) {
+      int16_t brakeTorque = (int16_t)(((int32_t)(-combinedCmd) * speedBlend) >> 15);
+      if (speedAvg > 0) {
+        combinedCmd = -brakeTorque;
+      } else if (speedAvg < 0) {
+        combinedCmd = brakeTorque;
+      } else {
+        combinedCmd = 0;
+      }
+    }
+
+    if (brakeCmd >= WHEELCHAIR_BRAKE_LOCK_THR && speedAvgAbs < 5) {
+      rtP_Left.n_cruiseMotTgt   = 0;
+      rtP_Right.n_cruiseMotTgt  = 0;
+      rtP_Left.b_cruiseCtrlEna  = 1;
+      rtP_Right.b_cruiseCtrlEna = 1;
+      wheelchairBrakeHoldAcv    = 1;
+      standstillAcv             = 1;
+      combinedCmd               = 0;
+      steerCmd                  = 0;
+    } else if (wheelchairBrakeHoldAcv && brakeCmd < WHEELCHAIR_BRAKE_LOCK_THR) {
+      rtP_Left.b_cruiseCtrlEna  = 0;
+      rtP_Right.b_cruiseCtrlEna = 0;
+      wheelchairBrakeHoldAcv    = 0;
+      standstillAcv             = 0;
+    }
+
+    if (!brakeCmd && !combinedCmd) {
+      steerCmd = CLAMP(steerCmd, -WHEELCHAIR_TURN_SPOT_CMD, WHEELCHAIR_TURN_SPOT_CMD);
+    }
+
+    input1[0].cmd = steerCmd;
+    input2[0].cmd = combinedCmd;
+  #else
+    (void)speedBlend;
   #endif
 }
 
