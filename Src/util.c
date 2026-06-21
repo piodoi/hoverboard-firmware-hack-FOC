@@ -186,17 +186,19 @@ static uint32_t commandR_len = sizeof(commandR);
   #endif
 #endif
 
-#if defined(SUPPORT_BUTTONS) || defined(SUPPORT_BUTTONS_LEFT) || defined(SUPPORT_BUTTONS_RIGHT)
+#if defined(CRUISE_CONTROL_SUPPORT) || defined(WHEELCHAIR_REVERSE_SWITCH_ENABLE)
 static uint8_t button1;                 // Blue
-static uint8_t button2;                 // Green
 #endif
 
 #ifdef VARIANT_HOVERCAR
 static uint8_t brakePressed;
 #endif
 
-#if defined(CRUISE_CONTROL_SUPPORT) || defined(WHEELCHAIR_PROFILE_ENABLE) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE))
+#if defined(CRUISE_CONTROL_SUPPORT) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE))
 static uint8_t cruiseCtrlAcv = 0;
+#endif
+
+#if defined(WHEELCHAIR_PROFILE_ENABLE) || (defined(STANDSTILL_HOLD_ENABLE) && (CTRL_TYP_SEL == FOC_CTRL) && (CTRL_MOD_REQ != SPD_MODE))
 static uint8_t standstillAcv = 0;
 #endif
 
@@ -957,7 +959,6 @@ void readInputRaw(void) {
       }
       #ifdef SUPPORT_BUTTONS
         button1 = (uint8_t)nunchuk_data[5] & 1;
-        button2 = (uint8_t)(nunchuk_data[5] >> 1) & 1;
       #endif
     }
     #endif
@@ -1018,7 +1019,6 @@ void readInputRaw(void) {
     #endif
     #if (defined(CONTROL_PPM_LEFT) || defined(CONTROL_PPM_RIGHT)) && defined(SUPPORT_BUTTONS)
       button1 = ppm_captured_value[5] > 500;
-      button2 = 0;
     #endif
 
     #if defined(CONTROL_PWM_LEFT)
@@ -1184,7 +1184,6 @@ void readCommand(void) {
 
     #if defined(SUPPORT_BUTTONS_LEFT) || defined(SUPPORT_BUTTONS_RIGHT)
       button1 = !HAL_GPIO_ReadPin(BUTTON1_PORT, BUTTON1_PIN);
-      button2 = !HAL_GPIO_ReadPin(BUTTON2_PORT, BUTTON2_PIN);
     #endif
 
     #if defined(CRUISE_CONTROL_SUPPORT) && (defined(SUPPORT_BUTTONS) || defined(SUPPORT_BUTTONS_LEFT) || defined(SUPPORT_BUTTONS_RIGHT))

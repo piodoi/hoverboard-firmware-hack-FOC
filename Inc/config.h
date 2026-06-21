@@ -9,7 +9,9 @@
 // Keil uVision: select desired variant from the Target drop down menu (to the right of the Load button)
 // Ubuntu: define the desired build variant here if you want to use make in console
 // or use VARIANT environment variable for example like "make -e VARIANT=VARIANT_NUNCHUK". Select only one at a time.
-#if !defined(PLATFORMIO)
+#if !defined(PLATFORMIO) && !defined(VARIANT_ADC) && !defined(VARIANT_USART) && !defined(VARIANT_NUNCHUK) && !defined(VARIANT_PPM) && \
+    !defined(VARIANT_PWM) && !defined(VARIANT_IBUS) && !defined(VARIANT_HOVERCAR) && !defined(VARIANT_HOVERBOARD) && \
+    !defined(VARIANT_TRANSPOTTER) && !defined(VARIANT_SKATEBOARD)
   #define VARIANT_ADC         // Variant for control via ADC input
   //#define VARIANT_USART       // Variant for Serial control via USART3 input
   //#define VARIANT_NUNCHUK     // Variant for Nunchuk controlled vehicle build
