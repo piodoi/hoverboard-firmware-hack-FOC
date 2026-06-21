@@ -782,6 +782,7 @@ void applyWheelchairInputProfile(uint16_t speedBlend) {
     int16_t throttleCmd = input2[0].cmd;
     int16_t steerCmd    = input1[0].cmd;
     int16_t targetCmd;
+    int16_t coastBrakeCmd = 0;
     uint8_t holdAllowed;
     uint8_t reverseReq = 0;
 
@@ -810,6 +811,23 @@ void applyWheelchairInputProfile(uint16_t speedBlend) {
       }
     } else if (speedAvgAbs < WHEELCHAIR_REVERSE_STOP_RPM && reverseReq) {
       targetCmd = -throttleCmd;
+    }
+
+    if (targetCmd == 0 && speedAvgAbs > WHEELCHAIR_HOLD_SPEED_RPM) {
+      int16_t brakeRange = WHEELCHAIR_COAST_BRAKE_RPM - WHEELCHAIR_HOLD_SPEED_RPM;
+      int16_t brakeSpeed = CLAMP(speedAvgAbs, WHEELCHAIR_HOLD_SPEED_RPM, WHEELCHAIR_COAST_BRAKE_RPM) - WHEELCHAIR_HOLD_SPEED_RPM;
+
+      if (brakeRange <= 0) {
+        coastBrakeCmd = WHEELCHAIR_COAST_BRAKE_MAX;
+      } else {
+        coastBrakeCmd = (int16_t)(((int32_t)brakeSpeed * WHEELCHAIR_COAST_BRAKE_MAX) / brakeRange);
+      }
+
+      if (speedAvg > 0) {
+        targetCmd = -coastBrakeCmd;
+      } else if (speedAvg < 0) {
+        targetCmd = coastBrakeCmd;
+      }
     }
 
     if (!targetCmd) {

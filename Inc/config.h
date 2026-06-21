@@ -295,6 +295,10 @@
 #undef  CTRL_MOD_REQ  
 #define CTRL_MOD_REQ      TRQ_MODE
 
+  #ifdef ELECTRIC_BRAKE_ENABLE
+    #undef ELECTRIC_BRAKE_ENABLE
+  #endif
+
   #define CONTROL_ADC           0         // use ADC as input. Number indicates priority for dual-input. Disable CONTROL_SERIAL_USART2, FEEDBACK_SERIAL_USART2, DEBUG_SERIAL_USART2!
   #define SUPPORT_BUTTONS_RIGHT           // PB10 button1 to GND requests reverse. PB11 stays available as a second input if needed.
 
@@ -302,9 +306,12 @@
   #define WHEELCHAIR_REVERSE_SWITCH_ENABLE
   #define WHEELCHAIR_ACCEL_HALF_CMD 120   // About walking speed (~5 kph on 10 inch wheels) at half throttle travel
   #define WHEELCHAIR_TURN_SPOT_CMD  140   // Limit turn-in-place speed when throttle is released
+  #define WHEELCHAIR_COAST_BRAKE_MAX 100  // Progressive electric braking torque when throttle is released
+  #define WHEELCHAIR_COAST_BRAKE_RPM 60   // Speed where coast braking reaches full strength
   #define WHEELCHAIR_HOLD_SPEED_RPM 8     // Hill hold engages only near standstill
   #define WHEELCHAIR_HOLD_STEER_DB  60    // Steering above this value temporarily releases wheel hold
   #define WHEELCHAIR_REVERSE_STOP_RPM 25  // Reverse is only allowed after speed drops below this threshold
+  #define STEER_COEFFICIENT 57344         // -0.5f to invert steering without rewiring the potentiometer 49152 for -1.0, 57344 for -0.5, 61440 for -0.25
 
   #define FLASH_WRITE_KEY       0x1001    // Flash memory writing key. Change this key to ignore the input calibrations from the flash memory and use the ones in config.h
   #define PRI_INPUT1            2, 0, 2048, 4095, 40  // Steering pot: center resting
